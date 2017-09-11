@@ -52,11 +52,7 @@ int socket_waitfd(p_socket ps, int sw, p_timeout tm) {
     struct timeval tv, *tp = NULL;
     double t;
     if (timeout_iszero(tm)) return IO_TIMEOUT;  /* optimize timeout == 0 case */
-    if (sw & WAITFD_R) { 
-        FD_ZERO(&rfds); 
-		FD_SET(*ps, &rfds);
-        rp = &rfds; 
-    }
+    if (sw & WAITFD_R) { FD_ZERO(&rfds); FD_SET(*ps, &rfds); rp = &rfds; }
     if (sw & WAITFD_W) { FD_ZERO(&wfds); FD_SET(*ps, &wfds); wp = &wfds; }
     if (sw & WAITFD_C) { FD_ZERO(&efds); FD_SET(*ps, &efds); ep = &efds; }
     if ((t = timeout_get(tm)) >= 0.0) {
@@ -65,6 +61,8 @@ int socket_waitfd(p_socket ps, int sw, p_timeout tm) {
         tp = &tv;
     }
     ret = select(0, rp, wp, ep, tp);
+    /* give windows time to propagate socket status (yes, disgusting) */
+    Sleep(10);
     if (ret == -1) return WSAGetLastError();
     if (ret == 0) return IO_TIMEOUT;
     if (sw == WAITFD_C && FD_ISSET(*ps, &efds)) return IO_CLOSED;
@@ -74,7 +72,7 @@ int socket_waitfd(p_socket ps, int sw, p_timeout tm) {
 /*-------------------------------------------------------------------------*\
 * Select with int timeout in ms
 \*-------------------------------------------------------------------------*/
-int socket_select(t_socket n, fd_set *rfds, fd_set *wfds, fd_set *efds, 
+int socket_select(t_socket n, fd_set *rfds, fd_set *wfds, fd_set *ignored,
         p_timeout tm) {
     struct timeval tv; 
     double t = timeout_get(tm);
@@ -83,7 +81,18 @@ int socket_select(t_socket n, fd_set *rfds, fd_set *wfds, fd_set *efds,
     if (n <= 0) {
         Sleep((DWORD) (1000*t));
         return 0;
-    } else return select(0, rfds, wfds, efds, t >= 0.0? &tv: NULL);
+    } else {
+        int res;
+        t_socket s;
+        fd_set efds;
+        FD_ZERO(&efds);
+        for (s = 0; s < n; ++s) if (FD_ISSET(s, wfds)) FD_SET(s, &efds);
+        res = select(0, rfds, wfds, &efds, t >= 0.0? &tv: NULL);
+        for (s = 0; s < n; ++s) if (FD_ISSET(s, &efds)) FD_SET(s, wfds);
+        /* give windows time to propagate socket status (yes, disgusting) */
+        Sleep(10);
+        return res;
+    }
 }
 
 /*-------------------------------------------------------------------------*\
@@ -120,6 +129,10 @@ int socket_create(p_socket ps, int domain, int type, int protocol) {
 \*-------------------------------------------------------------------------*/
 int socket_connect(p_socket ps, SA *addr, socklen_t len, p_timeout tm) {
     int err;
+    int errlen = sizeof(err);
+    /* find out if we failed during a 'select' */
+    getsockopt(*ps, SOL_SOCKET, SO_ERROR, (char *)&err, &errlen);
+    if (err != 0) return err;
     /* don't call on closed socket */
     if (*ps == SOCKET_INVALID) return IO_CLOSED;
     /* ask system to connect */
@@ -132,11 +145,9 @@ int socket_connect(p_socket ps, SA *addr, socklen_t len, p_timeout tm) {
     /* we wait until something happens */
     err = socket_waitfd(ps, WAITFD_C, tm);
     if (err == IO_CLOSED) {
-        int len = sizeof(err);
-        /* give windows time to set the error (yes, disgusting) */
-        Sleep(10);
+        errlen = sizeof(err);
         /* find out why we failed */
-        getsockopt(*ps, SOL_SOCKET, SO_ERROR, (char *)&err, &len); 
+        getsockopt(*ps, SOL_SOCKET, SO_ERROR, (char *)&err, &errlen);
         /* we KNOW there was an error. if 'why' is 0, we will return
         * "unknown error", but it's not really our fault */
         return err > 0? err: IO_UNKNOWN; 
