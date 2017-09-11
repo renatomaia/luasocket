@@ -20,10 +20,6 @@
 #include "lua.h"
 #include "lauxlib.h"
 
-#if !defined(LUA_VERSION_NUM) || (LUA_VERSION_NUM < 501)
-#include "compat-5.1.h"
-#endif
-
 /*=========================================================================*\
 * LuaSocket includes
 \*=========================================================================*/
@@ -47,7 +43,7 @@ static int base_open(lua_State *L);
 /*-------------------------------------------------------------------------*\
 * Modules and functions
 \*-------------------------------------------------------------------------*/
-static const luaL_reg mod[] = {
+static const luaL_Reg mod[] = {
     {"auxiliar", auxiliar_open},
     {"except", except_open},
     {"timeout", timeout_open},
@@ -59,7 +55,7 @@ static const luaL_reg mod[] = {
     {NULL, NULL}
 };
 
-static luaL_reg func[] = {
+static luaL_Reg func[] = {
     {"skip",      global_skip},
     {"__unload",  global_unload},
     {NULL,        NULL}
@@ -89,7 +85,12 @@ static int global_unload(lua_State *L) {
 static int base_open(lua_State *L) {
     if (socket_open()) {
         /* export functions (and leave namespace table on top of stack) */
+#if LUA_VERSION_NUM > 501 && !defined(LUA_COMPAT_MODULE)
+        lua_newtable(L);
+        luaL_setfuncs(L, func, 0);
+#else
         luaL_openlib(L, "socket", func, 0);
+#endif
 #ifdef LUASOCKET_DEBUG
         lua_pushstring(L, "_DEBUG");
         lua_pushboolean(L, 1);
@@ -112,7 +113,10 @@ static int base_open(lua_State *L) {
 \*-------------------------------------------------------------------------*/
 LUASOCKET_API int luaopen_socket_core(lua_State *L) {
     int i;
-    base_open(L);
-    for (i = 0; mod[i].name; i++) mod[i].func(L);
-    return 1;
+    if (base_open(L)) {
+        for (i = 0; mod[i].name; i++) mod[i].func(L);
+        return 1;
+    } else {
+        return 0;
+    }
 }

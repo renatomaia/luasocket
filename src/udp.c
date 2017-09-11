@@ -43,7 +43,7 @@ static int meth_setfd(lua_State *L);
 static int meth_dirty(lua_State *L);
 
 /* udp object methods */
-static luaL_reg udp[] = {
+static luaL_Reg udp[] = {
     {"__gc",        meth_close},
     {"__tostring",  auxiliar_tostring},
     {"close",       meth_close},
@@ -76,7 +76,7 @@ static t_opt opt[] = {
 };
 
 /* functions in library namespace */
-static luaL_reg func[] = {
+static luaL_Reg func[] = {
     {"udp", global_create},
     {NULL, NULL}
 };
@@ -95,7 +95,11 @@ int udp_open(lua_State *L)
     auxiliar_add2group(L, "udp{connected}",   "select{able}");
     auxiliar_add2group(L, "udp{unconnected}", "select{able}");
     /* define library functions */
+#if LUA_VERSION_NUM > 501 && !defined(LUA_COMPAT_MODULE)
+    luaL_setfuncs(L, func, 0);
+#else
     luaL_openlib(L, NULL, func, 0); 
+#endif
     return 0;
 }
 

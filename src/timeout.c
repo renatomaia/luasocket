@@ -33,7 +33,7 @@
 static int timeout_lua_gettime(lua_State *L);
 static int timeout_lua_sleep(lua_State *L);
 
-static luaL_reg func[] = {
+static luaL_Reg func[] = {
     { "gettime", timeout_lua_gettime },
     { "sleep", timeout_lua_sleep },
     { NULL, NULL }
@@ -144,7 +144,11 @@ double timeout_gettime(void) {
 * Initializes module
 \*-------------------------------------------------------------------------*/
 int timeout_open(lua_State *L) {
+#if LUA_VERSION_NUM > 501 && !defined(LUA_COMPAT_MODULE)
+    luaL_setfuncs(L, func, 0);
+#else
     luaL_openlib(L, NULL, func, 0);
+#endif
     return 0;
 }
 

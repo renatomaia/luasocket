@@ -9,10 +9,6 @@
 #include "lua.h"
 #include "lauxlib.h"
 
-#if !defined(LUA_VERSION_NUM) || (LUA_VERSION_NUM < 501)
-#include "compat-5.1.h"
-#endif
-
 #include "mime.h"
 
 /*=========================================================================*\
@@ -48,7 +44,7 @@ static size_t qpencode(UC c, UC *input, size_t size,
 static size_t qppad(UC *input, size_t size, luaL_Buffer *buffer);
 
 /* code support functions */
-static luaL_reg func[] = {
+static luaL_Reg func[] = {
     { "dot", mime_global_dot },
     { "b64", mime_global_b64 },
     { "eol", mime_global_eol },
@@ -83,7 +79,12 @@ static UC b64unbase[256];
 \*-------------------------------------------------------------------------*/
 MIME_API int luaopen_mime_core(lua_State *L)
 {
+#if LUA_VERSION_NUM > 501 && !defined(LUA_COMPAT_MODULE)
+    lua_newtable(L);
+    luaL_setfuncs(L, func, 0);
+#else
     luaL_openlib(L, "mime", func, 0);
+#endif
     /* make version string available to scripts */
     lua_pushstring(L, "_VERSION");
     lua_pushstring(L, MIME_VERSION);
@@ -135,7 +136,7 @@ static int mime_global_wrp(lua_State *L)
                     left = length;
                     luaL_addstring(&buffer, CRLF);
                 }
-                luaL_putchar(&buffer, *input);
+                luaL_addchar(&buffer, *input);
                 left--;
                 break;
         }
@@ -368,9 +369,9 @@ static void qpsetup(UC *qpclass, UC *qpunbase)
 \*-------------------------------------------------------------------------*/
 static void qpquote(UC c, luaL_Buffer *buffer)
 {
-    luaL_putchar(buffer, '=');
-    luaL_putchar(buffer, qpbase[c >> 4]);
-    luaL_putchar(buffer, qpbase[c & 0x0F]);
+    luaL_addchar(buffer, '=');
+    luaL_addchar(buffer, qpbase[c >> 4]);
+    luaL_addchar(buffer, qpbase[c & 0x0F]);
 }
 
 /*-------------------------------------------------------------------------*\
@@ -400,7 +401,7 @@ static size_t qpencode(UC c, UC *input, size_t size,
                     qpquote(input[0], buffer);
                     luaL_addstring(buffer, marker);
                     return 0;
-                } else luaL_putchar(buffer, input[0]);
+                } else luaL_addchar(buffer, input[0]);
                 break;
                 /* might have to be quoted always */
             case QP_QUOTED:
@@ -408,7 +409,7 @@ static size_t qpencode(UC c, UC *input, size_t size,
                 break;
                 /* might never have to be quoted */
             default:
-                luaL_putchar(buffer, input[0]);
+                luaL_addchar(buffer, input[0]);
                 break;
         }
         input[0] = input[1]; input[1] = input[2];
@@ -424,7 +425,7 @@ static size_t qppad(UC *input, size_t size, luaL_Buffer *buffer)
 {
     size_t i;
     for (i = 0; i < size; i++) {
-        if (qpclass[input[i]] == QP_PLAIN) luaL_putchar(buffer, input[i]);
+        if (qpclass[input[i]] == QP_PLAIN) luaL_addchar(buffer, input[i]);
         else qpquote(input[i], buffer);
     }
     if (size > 0) luaL_addstring(buffer, EQCRLF);
@@ -494,7 +495,7 @@ static size_t qpdecode(UC c, UC *input, size_t size, luaL_Buffer *buffer) {
             c = qpunbase[input[1]]; d = qpunbase[input[2]];
             /* if it is an invalid, do not decode */
             if (c > 15 || d > 15) luaL_addlstring(buffer, (char *)input, 3);
-            else luaL_putchar(buffer, (c << 4) + d);
+            else luaL_addchar(buffer, (c << 4) + d);
             return 0;
         case '\r':
             if (size < 2) return size; 
@@ -502,7 +503,7 @@ static size_t qpdecode(UC c, UC *input, size_t size, luaL_Buffer *buffer) {
             return 0;
         default:
             if (input[0] == '\t' || (input[0] > 31 && input[0] < 127))
-                luaL_putchar(buffer, input[0]);
+                luaL_addchar(buffer, input[0]);
             return 0;
     }
 }
@@ -587,7 +588,7 @@ static int mime_global_qpwrp(lua_State *L)
                     left = length;
                     luaL_addstring(&buffer, EQCRLF);
                 } 
-                luaL_putchar(&buffer, *input);
+                luaL_addchar(&buffer, *input);
                 left--;
                 break;
             default: 
@@ -595,7 +596,7 @@ static int mime_global_qpwrp(lua_State *L)
                     left = length;
                     luaL_addstring(&buffer, EQCRLF);
                 }
-                luaL_putchar(&buffer, *input);
+                luaL_addchar(&buffer, *input);
                 left--;
                 break;
         }
@@ -630,7 +631,7 @@ static int eolprocess(int c, int last, const char *marker,
             return c;
         }
     } else {
-        luaL_putchar(buffer, c);
+        luaL_addchar(buffer, c);
         return 0;
     }
 }
@@ -670,7 +671,7 @@ static int mime_global_eol(lua_State *L)
 \*-------------------------------------------------------------------------*/
 static size_t dot(int c, size_t state, luaL_Buffer *buffer)
 {
-    luaL_putchar(buffer, c);
+    luaL_addchar(buffer, c);
     switch (c) {
         case '\r': 
             return 1;
@@ -678,7 +679,7 @@ static size_t dot(int c, size_t state, luaL_Buffer *buffer)
             return (state == 1)? 2: 0; 
         case '.':  
             if (state == 2) 
-                luaL_putchar(buffer, '.');
+                luaL_addchar(buffer, '.');
         default:
             return 0;
     }

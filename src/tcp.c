@@ -38,7 +38,7 @@ static int meth_setfd(lua_State *L);
 static int meth_dirty(lua_State *L);
 
 /* tcp object methods */
-static luaL_reg tcp[] = {
+static luaL_Reg tcp[] = {
     {"__gc",        meth_close},
     {"__tostring",  auxiliar_tostring},
     {"accept",      meth_accept},
@@ -73,7 +73,7 @@ static t_opt opt[] = {
 };
 
 /* functions in library namespace */
-static luaL_reg func[] = {
+static luaL_Reg func[] = {
     {"tcp", global_create},
     {NULL, NULL}
 };
@@ -92,7 +92,11 @@ int tcp_open(lua_State *L)
     auxiliar_add2group(L, "tcp{client}", "tcp{any}");
     auxiliar_add2group(L, "tcp{server}", "tcp{any}");
     /* define library functions */
+#if LUA_VERSION_NUM > 501 && !defined(LUA_COMPAT_MODULE)
+    luaL_setfuncs(L, func, 0);
+#else
     luaL_openlib(L, NULL, func, 0); 
+#endif
     return 0;
 }
 
